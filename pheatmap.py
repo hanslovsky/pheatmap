@@ -59,10 +59,10 @@ class MplPlot(QtGui.QDialog):
         self.fileNameField = QtGui.QLineEdit()
         self.fileNameField.setPlaceholderText( 'Path to file containing data (csv or image)' )
 
-        self.grid.addWidget(self.button, 0, 0)
-        self.grid.addWidget(self.saveButton, 0, 1)
+        self.grid.addWidget(self.button, 0, 0, 1, 1)
+        self.grid.addWidget(self.saveButton, 0, 1, 1, 1)
         self.grid.addWidget(self.browseButton, 1, 0)
-        self.grid.addWidget(self.fileNameField, 1, 1)
+        self.grid.addWidget(self.fileNameField, 1, 1, 1, 3)
 
         # axis tags
         self.xaxistagsGroup        = QtGui.QButtonGroup(self)
