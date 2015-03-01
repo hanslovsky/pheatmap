@@ -21,16 +21,110 @@ import vigra
 
 matplotlib.rc('text', usetex=False) # no tex escape so far!
 
+class RGBDialog(QtGui.QDialog):
+    def __init__(self, title, reverse, isLight, parent=None):
+        super(RGBDialog, self).__init__(parent)
+        self.setWindowTitle( title )
+
+        self.title  = title
+        self.grid   = QtGui.QGridLayout()
+        self.R      = QtGui.QLineEdit()
+        self.G      = QtGui.QLineEdit()
+        self.B      = QtGui.QLineEdit()
+        self.N      = QtGui.QLineEdit()
+        self.ok     = QtGui.QPushButton('Ok')
+        self.cancel = QtGui.QPushButton('Cancel')
+        self.R.setPlaceholderText( '0 <= red <= 255' )
+        self.G.setPlaceholderText( '0 <= green <= 255' )
+        self.B.setPlaceholderText( '0 <= blue <= 255' )
+        self.N.setPlaceholderText( '0 < number of colors in palette' )
+
+        self.grid.addWidget( self.R, 0, 0, 1, 2 )
+        self.grid.addWidget( self.G, 0, 2, 1 ,2 )
+        self.grid.addWidget( self.B, 0, 4, 1, 2 )
+        self.grid.addWidget( self.N, 0, 6, 1, 2 )
+
+        self.grid.addWidget( self.ok, 1, 0, 1, 2 )
+        self.grid.addWidget( self.cancel, 1, 6, 1, 2 )
+        
+        self.setLayout( self.grid )
+
+        self.reverse = reverse
+
+        self.cmap_func = sns.light_palette if isLight else sns.dark_palette
+
+        self.cancel.clicked.connect( self.reject )
+        self.ok.clicked.connect( self._create_cmap )
+
+    def _create_cmap( self ):
+        r = int( str( self.R.text() ) )
+        g = int( str( self.G.text() ) )
+        b = int( str( self.B.text() ) )
+        n = int( str( self.N.text() ) )
+        rgb = ( r, g, b )
+        self.cmap = self.cmap_func( tuple( c / 255.0 for c in rgb ), n_colors = n, as_cmap = True, reverse = self.reverse  )
+        self.title = '%s - %d,%d,%d - %d colors' % ( ( self.title, ) + rgb + ( n, ) )
+        self.accept()
+        
+
+
+class CmapDialog(QtGui.QDialog):
+    def __init__(self, parent=None):
+        super(CmapDialog, self).__init__(parent)
+
+        self.setWindowTitle( 'Colormap Chooser' )
+
+        self.selectionRadioButtons = QtGui.QButtonGroup(self)
+        self.choices               = [ 'Standard', 'Light Palette', 'Dark Palette' ]
+        self.buttons               = [ QtGui.QRadioButton( l ) for l in self.choices ]
+        self.buttonLayout          = QtGui.QHBoxLayout()
+        self.layout                = QtGui.QVBoxLayout()
+        self.yesNoLayout           = QtGui.QHBoxLayout()
+        self.reverseCheck          = QtGui.QCheckBox( 'Reverse color map?' )
+        self.cmap_name             = ''
+        self.cmap                  = None
+        
+        for b in self.buttons:
+            self.selectionRadioButtons.addButton( b )
+            self.buttonLayout.addWidget( b )
+        self.buttons[0].setChecked( True )
+        self.buttonLayout.addWidget( self.reverseCheck )
+            
+        self.chooseButton = QtGui.QPushButton( 'Choose colormap', self )
+        self.okButton     = QtGui.QPushButton( 'Ok', self )
+        self.cancelButton = QtGui.QPushButton( 'Cancel', self )
+        self.chooseButton.clicked.connect( self._choose_cmap )
+        self.okButton.clicked.connect( self.accept )
+        self.cancelButton.clicked.connect( self.reject )
+        self.yesNoLayout.addWidget( self.chooseButton )
+        self.yesNoLayout.addWidget( self.okButton )
+        self.yesNoLayout.addWidget( self.cancelButton )
+        self.layout.addLayout( self.buttonLayout )
+        self.layout.addLayout( self.yesNoLayout )
+        self.setLayout( self.layout )
+
+    def _choose_cmap( self ):
+        if self.buttons[0].isChecked():
+            dialog = QtGui.QErrorMessage( self )
+            dialog.showMessage( "Not implemented yet." )
+        else:
+            isLight = self.buttons[1].isChecked()
+            dialog = RGBDialog( self.choices[1] if isLight else self.choices[2], # title
+                                self.reverseCheck.isChecked(), # reverse
+                                isLight,
+                                self )
+            result = dialog.exec_()
+            if not result == QtGui.QDialog.reject:
+                self.cmap  = dialog.cmap
+                self.title = dialog.title
+
+
+
 class MplPlot(QtGui.QDialog):
     def __init__(self, parent=None):
         super(MplPlot, self).__init__(parent)
 
         self.hm = None
-
-        # initial plot parameters
-        self.xticklabelOptions = 'none'
-        self.yticklabelOptions = 'none'
-        self.labelStep         = 10
 
         # a figure instance to plot on
         self.figure = plt.figure()
@@ -47,9 +141,13 @@ class MplPlot(QtGui.QDialog):
         self.button = QtGui.QPushButton('Plot')
         self.button.clicked.connect(self.plot)
 
-        # Save button
-        self.saveButton = QtGui.QPushButton('Save')
-        self.saveButton.clicked.connect( self._save )
+        # Save button - toolbar has save button already
+        # self.saveButton = QtGui.QPushButton('Save')
+        # self.saveButton.clicked.connect( self._save )
+
+        # color map button
+        self.cmapButton = QtGui.QPushButton('Color Map')
+        self.cmapButton.clicked.connect(self._cmap)
 
         self.grid = QtGui.QGridLayout()
 
@@ -60,7 +158,7 @@ class MplPlot(QtGui.QDialog):
         self.fileNameField.setPlaceholderText( 'Path to file containing data (csv or image)' )
 
         self.grid.addWidget(self.button, 0, 0, 1, 1)
-        self.grid.addWidget(self.saveButton, 0, 1, 1, 1)
+        self.grid.addWidget(self.cmapButton, 0, 1, 1, 1)
         self.grid.addWidget(self.browseButton, 1, 0)
         self.grid.addWidget(self.fileNameField, 1, 1, 1, 3)
 
@@ -140,10 +238,21 @@ class MplPlot(QtGui.QDialog):
 
         # plot data
         xticklabels, yticklabels = self._get_ticklabels( dataFrame )
-        self.hm = sns.heatmap( data, ax=ax, linewidths=0, square=True, xticklabels = xticklabels, yticklabels = yticklabels )
+        if self.cmap is None:
+            self.hm = sns.heatmap( data, ax=ax, linewidths=0, square=True, xticklabels = xticklabels, yticklabels = yticklabels )
+        else:
+            self.hm = sns.heatmap( data, ax=ax, linewidths=0, square=True, xticklabels = xticklabels, yticklabels = yticklabels, cmap=self.cmap )
 
         # refresh canvas
         self.canvas.draw()
+
+    def _cmap(self):
+        dialog = CmapDialog( self )
+        result = dialog.exec_()
+        if not result == QtGui.QDialog.reject:
+            self.cmap       = dialog.cmap
+            self.cmap_title = dialog.title
+        # dialog = CmapDialog( )
 
     def _save(self):
         if self.hm is None:
