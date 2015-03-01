@@ -123,7 +123,7 @@ class MplPlot(QtGui.QDialog):
         layout.addLayout(self.grid)
         layout.addLayout(self.xaxistagsLayout)
         layout.addLayout(self.yaxistagsLayout)
-        self.setLayout(layout)
+        self.setLayout( layout )
 
     def plot(self):
         dataFrame = self._read_file()
