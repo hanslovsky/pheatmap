@@ -217,6 +217,9 @@ class MplPlot(QtGui.QDialog):
         self.cmapInfo  = QtGui.QLineEdit()
         self.cmapBase  = ColorMapWidget.generateBase(height=15)
         self.cmapShow  = ColorMapWidget(self.cmap, self.cmapBase)
+
+        # plot faster with imshow?
+        self.fastPlotBox  = QtGui.QCheckBox( 'Fast plot (no colorbar or axis)?' )
         
         self.cmapInfo.setText( self.cmapTitle )
         self.cmapInfo.setReadOnly( True )
@@ -256,8 +259,9 @@ class MplPlot(QtGui.QDialog):
         self.grid.addWidget(self.cmapButton, 0, 1, 1, 1)
         self.grid.addWidget(self.cmapShow, 0, 2, 1, 1)
         self.grid.addWidget(self.cmapInfo, 0, 3, 1, 1)
+        self.grid.addWidget(self.fastPlotBox, 0, 4, 1, 1)
         self.grid.addWidget(self.browseButton, 1, 0)
-        self.grid.addWidget(self.fileNameField, 1, 1, 1, 3)
+        self.grid.addWidget(self.fileNameField, 1, 1, 1, 4)
 
         # axis tags
         self.xaxistagsGroup        = QtGui.QButtonGroup(self)
@@ -335,10 +339,12 @@ class MplPlot(QtGui.QDialog):
 
         # plot data
         xticklabels, yticklabels = self._get_ticklabels( dataFrame )
-        if self.cmap is None:
-            self.hm = sns.heatmap( data, ax=ax, linewidths=0, square=True, xticklabels = xticklabels, yticklabels = yticklabels )
+        if self.fastPlotBox.isChecked():
+            self.hm = plt.imshow( data, cmap=self.cmap, interpolation='nearest' )
+            plt.axis('off')
         else:
             self.hm = sns.heatmap( data, ax=ax, linewidths=0, square=True, xticklabels = xticklabels, yticklabels = yticklabels, cmap=self.cmap )
+            
 
         # refresh canvas
         self.canvas.draw()
@@ -397,8 +403,9 @@ class MplPlot(QtGui.QDialog):
                 break
             ytickLabelOption += 1
         stepX, stepY = int( self.xaxistagsStepField.text() or '1' ), int( self.yaxistagsStepField.text() or '1' )
-        xticklabels, yticklabels = ( self._get_ticklabel( dataFrame, 0, xtickLabelOption, stepX ),
-                                     self._get_ticklabel( dataFrame, 1, ytickLabelOption, stepY ) )
+        # get better understanding of which axis is 0, which is 1
+        xticklabels, yticklabels = ( self._get_ticklabel( dataFrame, 1, xtickLabelOption, stepX ),
+                                     self._get_ticklabel( dataFrame, 0, ytickLabelOption, stepY ) )
         return xticklabels, yticklabels
 
     def _get_ticklabel( self, dataFrame, axis, option, step ):
@@ -406,9 +413,9 @@ class MplPlot(QtGui.QDialog):
             labels = [''] * dataFrame.shape[axis]
         elif option == 1:
             if axis == 1:
-                labels = dataFrame.index
-            elif axis == 0:
                 labels = dataFrame.columns
+            elif axis == 0:
+                labels = dataFrame.index
         elif option == 2:
             labels = [''] * dataFrame.shape[axis]
             labels[ ::step ] = xrange( 0, dataFrame.shape[axis], step )
@@ -422,9 +429,7 @@ class MplPlot(QtGui.QDialog):
             dataFrame = io.parsers.read_csv( filename, index_col=index_col, header=None )#, header=header)
         else:
             data = vigra.impex.readImage( filename ).squeeze()
-            cols = [''] * data.shape[1]
-            rows = [''] * data.shape[0]
-            dataFrame = pandas.dataFrame( data, columns = cols, rows = rows )
+            dataFrame = pandas.DataFrame( data.transpose() )
         return dataFrame
 
     
