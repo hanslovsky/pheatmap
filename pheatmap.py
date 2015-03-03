@@ -4,6 +4,7 @@ from PyQt4 import QtGui
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 import matplotlib
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -13,6 +14,8 @@ import os
 import pandas
 import pandas.io as io
 
+import qimage2ndarray
+
 import seaborn as sns
 
 import random
@@ -21,7 +24,90 @@ import vigra
 
 matplotlib.rc('text', usetex=False) # no tex escape so far!
 
-class RGBDialog(QtGui.QDialog):
+class ColorMapWidget( QtGui.QWidget ):
+    def __init__(self, cmap, base, parent=None ):
+        super(ColorMapWidget, self).__init__(parent)
+        self.layout = QtGui.QVBoxLayout()
+        self.label  = QtGui.QLabel( '' )
+        self.set( cmap, base )
+        self.layout.addWidget( self.label )
+        self.setLayout( self.layout )
+
+    @staticmethod
+    def generateBase( width=100, height=10 ):
+        return np.outer( np.ones(height), np.linspace(0,1,width) )
+
+    def set( self, cmap, base ):
+        rgbImage    = cm.ScalarMappable( cmap=cmap ).to_rgba(base) * 255
+        qImage      = qimage2ndarray.array2qimage( rgbImage )
+        self.label.setPixmap( QtGui.QPixmap.fromImage( qImage ) )
+        
+
+class MPLDialog( QtGui.QDialog ):
+    def __init__(self, title, reverse, parent=None):
+        super(MPLDialog, self).__init__(parent)
+
+        self.title = title
+        self.setWindowTitle( title )
+
+        self.cmap = None
+
+        self.ok             = QtGui.QPushButton('Ok')
+        self.cancel         = QtGui.QPushButton('Cancel')
+        self.reverse        = reverse
+        self.layout         = QtGui.QVBoxLayout()
+        self.buttonLayout   = QtGui.QHBoxLayout()
+        self.cmapScrollArea = QtGui.QScrollArea()
+        self.w              = QtGui.QWidget()
+        self.cmapGrid       = QtGui.QGridLayout(self.w)
+
+        self.cancel.clicked.connect( self.reject )
+        self.ok.clicked.connect( self._create_cmap )
+
+        self.buttonLayout.addWidget( self.ok )
+        self.buttonLayout.addWidget( self.cancel )
+
+        a = np.outer( np.ones(10), np.linspace(0,1,100) )
+        cond = ( lambda x : x.endswith("_r") ) if reverse else ( lambda x : not x.endswith("_r") )
+        maps=[m for m in cm.datad if cond(m)]
+        maps.sort()
+        maps = maps
+        self.buttons     = [ QtGui.QRadioButton(m) for m in maps ]
+        self.buttonGroup = QtGui.QButtonGroup()
+        l=len(maps)+1
+        base = np.outer( np.ones(30), np.linspace(0, 1, 101) )
+        for i, m in enumerate(maps):
+            # rgbImage = cm.ScalarMappable( cmap=cm.get_cmap(m) ).to_rgba(base)*255
+            # qImage   = qimage2ndarray.array2qimage( rgbImage )
+            # label    = QtGui.QLabel('')
+            # hbox     = QtGui.QHBoxLayout()
+            # label.setPixmap( QtGui.QPixmap.fromImage( qImage ) )
+            label = ColorMapWidget( cm.get_cmap(m), base, self )
+            self.cmapGrid.addWidget( label, i, 0, 1, 1 )
+            self.cmapGrid.addWidget( self.buttons[i], i, 1, 1, 1 )
+            self.buttonGroup.addButton( self.buttons[i] )
+
+        self.buttons[0].setChecked( True )
+        self.cmapScrollArea.setWidget( self.w )
+        self.cmapScrollArea.setWidgetResizable = True
+        self.layout.addWidget( self.cmapScrollArea )
+        self.layout.addLayout( self.buttonLayout )
+        self.setLayout( self.layout )
+
+        
+
+    def _create_cmap( self ):
+        for b in self.buttons:
+            if b.isChecked():
+                self.title = str( b.text() )
+                break
+
+        self.cmap = cm.get_cmap( self.title )
+        self.accept()
+        
+        
+
+class RGBDialog( QtGui.QDialog ):
     def __init__(self, title, reverse, isLight, parent=None):
         super(RGBDialog, self).__init__(parent)
         self.setWindowTitle( title )
@@ -105,18 +191,19 @@ class CmapDialog(QtGui.QDialog):
 
     def _choose_cmap( self ):
         if self.buttons[0].isChecked():
-            dialog = QtGui.QErrorMessage( self )
-            dialog.showMessage( "Not implemented yet." )
+            dialog = MPLDialog( self.choices[0],
+                                self.reverseCheck.isChecked(),
+                                self )
         else:
             isLight = self.buttons[1].isChecked()
             dialog = RGBDialog( self.choices[1] if isLight else self.choices[2], # title
                                 self.reverseCheck.isChecked(), # reverse
                                 isLight,
                                 self )
-            result = dialog.exec_()
-            if not result == QtGui.QDialog.reject:
-                self.cmap  = dialog.cmap
-                self.title = dialog.title
+        result = dialog.exec_()
+        if not result == QtGui.QDialog.reject:
+            self.cmap  = dialog.cmap
+            self.title = dialog.title
 
 
 
@@ -124,7 +211,15 @@ class MplPlot(QtGui.QDialog):
     def __init__(self, parent=None):
         super(MplPlot, self).__init__(parent)
 
-        self.hm = None
+        self.hm        = None
+        self.cmap      = cm.get_cmap( 'RdBu' )
+        self.cmapTitle = 'RdBu'
+        self.cmapInfo  = QtGui.QLineEdit()
+        self.cmapBase  = ColorMapWidget.generateBase(height=15)
+        self.cmapShow  = ColorMapWidget(self.cmap, self.cmapBase)
+        
+        self.cmapInfo.setText( self.cmapTitle )
+        self.cmapInfo.setReadOnly( True )
 
         # a figure instance to plot on
         self.figure = plt.figure()
@@ -159,6 +254,8 @@ class MplPlot(QtGui.QDialog):
 
         self.grid.addWidget(self.button, 0, 0, 1, 1)
         self.grid.addWidget(self.cmapButton, 0, 1, 1, 1)
+        self.grid.addWidget(self.cmapShow, 0, 2, 1, 1)
+        self.grid.addWidget(self.cmapInfo, 0, 3, 1, 1)
         self.grid.addWidget(self.browseButton, 1, 0)
         self.grid.addWidget(self.fileNameField, 1, 1, 1, 3)
 
@@ -251,8 +348,9 @@ class MplPlot(QtGui.QDialog):
         result = dialog.exec_()
         if not result == QtGui.QDialog.reject:
             self.cmap       = dialog.cmap
-            self.cmap_title = dialog.title
-        # dialog = CmapDialog( )
+            self.cmapTitle = dialog.title
+            self.cmapInfo.setText( self.cmapTitle )
+            self.cmapShow.set( self.cmap, self.cmapBase )
 
     def _save(self):
         if self.hm is None:
