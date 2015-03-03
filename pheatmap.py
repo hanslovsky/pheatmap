@@ -201,7 +201,7 @@ class CmapDialog(QtGui.QDialog):
                                 isLight,
                                 self )
         result = dialog.exec_()
-        if not result == QtGui.QDialog.reject:
+        if result:
             self.cmap  = dialog.cmap
             self.title = dialog.title
 
@@ -346,7 +346,7 @@ class MplPlot(QtGui.QDialog):
     def _cmap(self):
         dialog = CmapDialog( self )
         result = dialog.exec_()
-        if not result == QtGui.QDialog.reject:
+        if result:
             self.cmap       = dialog.cmap
             self.cmapTitle = dialog.title
             self.cmapInfo.setText( self.cmapTitle )
@@ -360,7 +360,7 @@ class MplPlot(QtGui.QDialog):
             dialog = QtGui.QFileDialog(self)
             dialog.setWindowTitle('Save File')
             dialog.setFileMode(QtGui.QFileDialog.AnyFile)
-            if dialog.exec_() == QtGui.QDialog.Accepted:
+            if dialog.exec_():
                 filename = str( dialog.selectedFiles()[0] )
                 if os.path.isfile( filename ):
                     doOverwrite = QtGui.QMessageBox.question( self,
@@ -381,7 +381,7 @@ class MplPlot(QtGui.QDialog):
         dialog = QtGui.QFileDialog(self)
         dialog.setWindowTitle('Open File')
         dialog.setFileMode(QtGui.QFileDialog.ExistingFile)
-        if dialog.exec_() == QtGui.QDialog.Accepted:
+        if dialog.exec_():
             filename = dialog.selectedFiles()[0]
             self.fileNameField.setText( filename )
 
